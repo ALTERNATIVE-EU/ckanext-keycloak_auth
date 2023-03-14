@@ -1,0 +1,14 @@
+# keycloak_auth-js:
+#   filter: rjsmin
+#   output: ckanext-keycloak_auth/%(version)s-keycloak_auth.js
+#   contents:
+#     - js/keycloak_auth.js
+#   extra:
+#     preload:
+#       - base/main
+
+# keycloak_auth-css:
+#   filter: cssrewrite
+#   output: ckanext-keycloak_auth/%(version)s-keycloak_auth.css
+#   contents:
+#     - css/keycloak_auth.css
