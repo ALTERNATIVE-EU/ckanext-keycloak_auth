@@ -176,7 +176,7 @@ def jupyterhub_login():
     ckan_url = config.get('ckanext.keycloak.ckan_url')
     parsed_url = urlparse(ckan_url)
     host = parsed_url.netloc.split(':')[0]
-    jupyterhub_host = 'jupyterhub.' + host[(len(host.split('.')[0]) + 1):]
+    jupyterhub_host = 'jupyterhub.' + host
 
     redirect_url = (
         "https://"
