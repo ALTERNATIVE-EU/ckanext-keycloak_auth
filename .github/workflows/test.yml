@@ -46,7 +46,6 @@ jobs:
 
     - name: check keycloak
       run: |
-        apt install telnet
         nslookup keycloak
         telnet keycloak 8080
         curl http://keycloak:8080/
