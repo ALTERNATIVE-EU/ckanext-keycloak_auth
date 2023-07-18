@@ -43,9 +43,14 @@ jobs:
         pip install -r requirements.txt
         pip install -r dev-requirements.txt
         pip install -e .
+
     - name: check keycloak
       run: |
-        curl keycloak:8080/
+        apt install telnet
+        nslookup keycloak
+        telnet keycloak 8080
+        curl http://keycloak:8080/
+
     - name: Setup extension
       # Extra initialization steps
       run: |
@@ -53,6 +58,7 @@ jobs:
         sed -i -e 's/use = config:.*/use = config:\/srv\/app\/src\/ckan\/test-core.ini/' test.ini
 
         ckan -c test.ini db init
+
     - name: Run tests
       run: pytest --ckan-ini=test.ini --cov=ckanext.keycloak_auth --disable-warnings ckanext/keycloak_auth
 
