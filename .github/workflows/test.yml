@@ -48,7 +48,6 @@ jobs:
 
     - name: check keycloak
       run: |
-        nslookup keycloak
         telnet keycloak 8080
         curl http://keycloak:8080/
 
