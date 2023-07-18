@@ -24,6 +24,8 @@ jobs:
         # image: bitnami/keycloak:16.1.1-debian-10-r85
         image: quay.io/keycloak/keycloak:22.0.0
         env:
+          KC_HEALTH_ENABLED: true
+          KC_METRICS_ENABLED: true
           KEYCLOAK_ADMIN: admin
           KEYCLOAK_ADMIN_PASSWORD: admin
         # options: start-dev
