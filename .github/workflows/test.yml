@@ -28,7 +28,7 @@ jobs:
           KC_METRICS_ENABLED: true
           KEYCLOAK_ADMIN: admin
           KEYCLOAK_ADMIN_PASSWORD: admin
-        # options: start-dev
+        options: start-dev
 
     env:
       CKAN_SQLALCHEMY_URL: postgresql://ckan_default:pass@postgres/ckan_test
