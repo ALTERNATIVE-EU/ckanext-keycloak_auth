@@ -43,6 +43,9 @@ jobs:
         pip install -r requirements.txt
         pip install -r dev-requirements.txt
         pip install -e .
+    - name: check keycloak
+      run: |
+        curl keycloak:8080/
     - name: Setup extension
       # Extra initialization steps
       run: |
