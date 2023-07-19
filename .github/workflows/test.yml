@@ -20,15 +20,15 @@ jobs:
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:3
-      keycloak:
-        # image: bitnami/keycloak:16.1.1-debian-10-r85
-        image: quay.io/keycloak/keycloak:22.0.0
-        env:
-          KC_HEALTH_ENABLED: true
-          KC_METRICS_ENABLED: true
-          KEYCLOAK_ADMIN: admin
-          KEYCLOAK_ADMIN_PASSWORD: admin
-        options: --entrypoint "/opt/keycloak/bin/kc.sh start-dev"
+      # keycloak:
+      #   # image: bitnami/keycloak:16.1.1-debian-10-r85
+      #   image: quay.io/keycloak/keycloak:22.0.0
+      #   env:
+      #     KC_HEALTH_ENABLED: true
+      #     KC_METRICS_ENABLED: true
+      #     KEYCLOAK_ADMIN: admin
+      #     KEYCLOAK_ADMIN_PASSWORD: admin
+      #   options: --entrypoint "/opt/keycloak/bin/kc.sh" start-dev
 
     env:
       CKAN_SQLALCHEMY_URL: postgresql://ckan_default:pass@postgres/ckan_test
@@ -46,6 +46,11 @@ jobs:
         pip install -r dev-requirements.txt
         pip install -e .
 
+    - name: start Kecloak container
+      run: |
+        /usr/bin/docker create --name keycloak --label keycloak --network-alias keycloak --entrypoint "/opt/keycloak/bin/kc.sh" -e "KC_HEALTH_ENABLED=true" -e "KC_METRICS_ENABLED=true" -e "KEYCLOAK_ADMIN=admin" -e "KEYCLOAK_ADMIN_PASSWORD=admin" -e GITHUB_ACTIONS=true -e CI=true quay.io/keycloak/keycloak:22.0.0 start-dev
+        /usr/bin/docker start keycloak
+        /usr/bin/docker network ls
     - name: check keycloak
       run: |
         telnet keycloak 8080
