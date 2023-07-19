@@ -48,9 +48,10 @@ jobs:
 
     - name: start Kecloak container
       run: |
-        /usr/bin/docker create --name keycloak --label keycloak --network-alias keycloak --entrypoint "/opt/keycloak/bin/kc.sh" -e "KC_HEALTH_ENABLED=true" -e "KC_METRICS_ENABLED=true" -e "KEYCLOAK_ADMIN=admin" -e "KEYCLOAK_ADMIN_PASSWORD=admin" -e GITHUB_ACTIONS=true -e CI=true quay.io/keycloak/keycloak:22.0.0 start-dev
-        /usr/bin/docker start keycloak
-        /usr/bin/docker network ls
+        docker create --name keycloak --label keycloak --network-alias keycloak --entrypoint "/opt/keycloak/bin/kc.sh" -e "KC_HEALTH_ENABLED=true" -e "KC_METRICS_ENABLED=true" -e "KEYCLOAK_ADMIN=admin" -e "KEYCLOAK_ADMIN_PASSWORD=admin" -e GITHUB_ACTIONS=true -e CI=true quay.io/keycloak/keycloak:22.0.0 start-dev
+        docker start keycloak
+        docker network ls
+
     - name: check keycloak
       run: |
         telnet keycloak 8080
