@@ -43,8 +43,8 @@ jobs:
         pip install -e .
     - name: Install Java
       run: |
-        apt-get update
-        apt-get install -y openjdk-11-jdk
+        apk update
+        apk add openjdk11-jdk
     - name: Download and import Keycloak realm
       run: |
         curl -L -o realm.json https://raw.githubusercontent.com/ALTERNATIVE-EU/platform-deployment/master/deployment/charts/keycloak/realms/alternative-realm.json
