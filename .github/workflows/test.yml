@@ -48,6 +48,7 @@ jobs:
     - name: Download and import Keycloak realm
       run: |
         curl -L -o realm.json https://raw.githubusercontent.com/ALTERNATIVE-EU/platform-deployment/master/deployment/charts/keycloak/realms/alternative-realm.json
+        sed -i 's|url/|http://keycloak:8080/|g' realm.json
         curl -L https://github.com/keycloak/keycloak/releases/download/16.1.1/keycloak-16.1.1.zip -o keycloak.zip
         unzip keycloak.zip
         ./keycloak-16.1.1/bin/kcadm.sh config credentials --server http://keycloak:8080/auth --realm master --user admin --password password
