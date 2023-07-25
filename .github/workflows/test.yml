@@ -43,7 +43,6 @@ jobs:
         pip install -e .
     - name: Setup extension
       run: |
-        sed -i -e 's/use = config:.*/use = config:\/srv\/app\/src\/ckan\/test-core.ini/' test.ini
         ckan -c test.ini db init
     - name: Download and import Keycloak realm
       run: |
