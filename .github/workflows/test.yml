@@ -41,9 +41,6 @@ jobs:
         pip install -r requirements.txt
         pip install -r dev-requirements.txt
         pip install -e .
-    - name: Setup extension
-      run: |
-        ckan -c test.ini db init
     - name: Download and import Keycloak realm
       run: |
         curl -L -o realm.json https://raw.githubusercontent.com/ALTERNATIVE-EU/platform-deployment/master/deployment/charts/keycloak/realms/alternative-realm.json
@@ -51,5 +48,8 @@ jobs:
         unzip keycloak.zip
         ./keycloak-16.1.1/bin/kcadm.sh config credentials --server http://localhost:8080/auth --realm master --user admin --password password
         ./keycloak-16.1.1/bin/kcadm.sh create realms -f realm.json
+    - name: Setup extension
+      run: |
+        ckan -c test.ini db init
     - name: Run tests
       run: pytest --ckan-ini=test.ini --cov=ckanext.keycloak_auth --disable-warnings ckanext/keycloak_auth
