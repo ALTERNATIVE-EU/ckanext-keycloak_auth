@@ -1,3 +1,4 @@
+import datetime
 import logging
 import copy
 import string
@@ -125,6 +126,9 @@ def auth():
     resp = toolkit.redirect_to(ckan_url)
 
     set_repoze_user(g.user, resp)
+    
+    expires = datetime.datetime.now() + datetime.timedelta(days=1)
+    resp.set_cookie('jwt_access_token', value=token, expires=expires, httponly=True, secure=True)
 
     return resp
 
