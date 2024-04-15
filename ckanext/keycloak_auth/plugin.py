@@ -81,9 +81,17 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
     plugins.implements(plugins.IConfigurer)
     plugins.implements(plugins.IBlueprint)
     plugins.implements(plugins.IAuthenticator, inherit=True)
+    plugins.implements(plugins.IActions)
 
     keycloak_client_server = None
 
+    # IActions
+    def get_actions(self):
+        return {
+            "get_user_session": get_user_session_action,
+        }
+
+    # IConfigurer
     def configure(self, config):
         missing_param = "{0} is not configured. Please update your .ini file."
 
@@ -145,68 +153,51 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
     def identify(self):
         if request.path.startswith("/webassets/") or request.path.startswith("/base/"):
             return None
-        
+
         session_id = toolkit.request.cookies.get("session_id")
         if not session_id:
             return None
 
-        user_session = self.get_user_session(session_id)
+        user_session = get_user_session(session_id)
         if not user_session:
             return None
 
         if user_session and user_session.jwttokens:
             access_token = user_session.jwttokens.access_token
             refresh_token = user_session.jwttokens.refresh_token
-            
+
         if not access_token or not refresh_token:
-            return self.delete_session(user_session)
+            return delete_session(user_session)
 
         try:
             access_token_payload = decode_jwt(access_token)
         except ExpiredSignatureError as e:
-            log.info("Signature expired:" + e)
-            
+            log.info("Signature expired:" + str(e))
+
             access_token, refresh_token = self.refresh_auth_tokens(
                 refresh_token, user_session
             )
-            
+
             if not access_token or not refresh_token:
-                return self.delete_session(user_session)
-            
+                return delete_session(user_session)
+
             try:
                 access_token_payload = decode_jwt(access_token)
             except Exception as e:
                 log.error("Failed to decode JWT token: " + str(e))
-                return self.delete_session
+                return delete_session
         except Exception as e:
             log.error("Failed to decode JWT token 2: " + str(e))
-            return self.delete_session
-            
+            return delete_session
+
         g.user = process_user(
-            access_token_payload["email"], access_token_payload["name"], access_token_payload["preferred_username"]
+            access_token_payload["email"],
+            access_token_payload["name"],
+            access_token_payload["preferred_username"],
         )
         g.userobj = model.User.by_name(g.user)
-        
+
         return None
-
-    def get_user_session(self, session_id):
-        try:
-            return (
-                model.Session.query(UserSession)
-                .filter_by(session_id=session_id)
-                .first()
-            )
-        except Exception as e:
-            log.error(f"Get user session error: {e}")
-            return None
-
-    def get_tokens(self, user_session):
-        if user_session and user_session.jwttokens:
-            return (
-                user_session.jwttokens.access_token,
-                user_session.jwttokens.refresh_token,
-            )
-        return None, None
 
     def refresh_auth_tokens(self, refresh_token, user_session):
         new_access_token, new_refresh_token = get_jwt_tokens(refresh_token)
@@ -225,15 +216,6 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
                 return None, None
 
         return None, None
-
-    def delete_session(self, user_session):
-        response = toolkit.redirect_to("home.index")
-        response.delete_cookie("session_id")
-        
-        model.Session.delete(user_session)
-        model.Session.commit()
-
-        return response
 
     def logout(self):
         server_url = config.get("ckanext.keycloak.server_url")
@@ -283,7 +265,7 @@ def get_jwt_tokens(refresh_token):
 def fetch_public_key(kid):
     server_url = config.get("ckanext.keycloak.server_url")
     realm = config.get("ckanext.keycloak.realm")
-    
+
     jwks_url = f"{server_url}/realms/{realm}/protocol/openid-connect/certs"
     try:
         # Fetch the JWKS
@@ -313,15 +295,38 @@ def decode_jwt(token):
 
     # If the key is not in the cache, fetch it
     if not public_key:
-        print("!!! Public key not found in cache, fetching it!!!")
         public_key = fetch_public_key(kid)
         if not public_key:
             raise InvalidTokenError("Public key for KID not found")
-    else:
-        print("@@@ Public key found in cache@@@")
 
     # Construct the RSA public key
     rsa_public_key = jwt.algorithms.RSAAlgorithm.from_jwk(public_key)
 
-    decoded = jwt.decode(token, rsa_public_key, algorithms=["RS256"], audience="account")
+    decoded = jwt.decode(
+        token, rsa_public_key, algorithms=["RS256"], audience="account"
+    )
     return decoded
+
+def delete_session(user_session):
+    response = toolkit.redirect_to("home.index")
+    response.delete_cookie("session_id")
+
+    model.Session.delete(user_session)
+    model.Session.commit()
+
+    return response
+
+def get_user_session(session_id):
+    try:
+        return (
+            model.Session.query(UserSession)
+            .filter_by(session_id=session_id)
+            .first()
+        )
+    except Exception as e:
+        log.error(f"Get user session error: {e}")
+        return None
+
+def get_user_session_action(context, data_dict):
+    session = get_user_session(data_dict["session_id"])
+    return {"user_session": session}
