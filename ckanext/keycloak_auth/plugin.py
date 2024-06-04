@@ -39,7 +39,7 @@ def _get_user_by_email(email):
     return user_obj if user_obj else None
 
 
-def process_user(email, full_name, username):
+def process_user(email, full_name, username, roles):
     """
     Check if a user exists for the current login, if not register one
     Returns the user name
@@ -51,6 +51,15 @@ def process_user(email, full_name, username):
         log.info(user_dict)
 
         user_dict.password = password
+        user_dict.fullname = full_name
+        user_dict.email = email
+        user_dict.plugin_extras = {
+            "keycloak_plugin": {
+                "roles_extra": roles,
+            }
+        }
+        user_dict.save()
+        user_dict.commit()
 
         return user_dict.name
 
@@ -60,6 +69,11 @@ def process_user(email, full_name, username):
         "fullname": full_name,
         "email": email,
         "password": password,
+        "plugin_extras": {
+            "keycloak_plugin": {
+                "roles_extra": roles,
+            }
+        },
     }
 
     context = {
@@ -194,8 +208,12 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
             access_token_payload["email"],
             access_token_payload["name"],
             access_token_payload["preferred_username"],
+            access_token_payload["realm_access"]["roles"],
         )
+
+        print(g.user)
         g.userobj = model.User.by_name(g.user)
+        print(g.userobj)
 
         return None
 
