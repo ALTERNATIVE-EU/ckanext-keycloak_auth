@@ -27,7 +27,6 @@ jobs:
           KEYCLOAK_DATABASE_NAME: keycloak
           KEYCLOAK_DATABASE_USER: keycloak
           KEYCLOAK_DATABASE_PASSWORD: keycloak
-          KEYCLOAK_DATABASE_SCHEMA: public
         options: >-
           --health-cmd "curl -f http://localhost:8080/auth/realms/master || exit 1"
           --health-interval 10s
@@ -36,9 +35,9 @@ jobs:
         ports:
           - 8080:8080
     env:
-      CKAN_SQLALCHEMY_URL: postgresql://ckan_default:pass@postgres/ckan_test
-      CKAN_DATASTORE_WRITE_URL: postgresql://datastore_write:pass@postgres/datastore_test
-      CKAN_DATASTORE_READ_URL: postgresql://datastore_read:pass@postgres/datastore_test
+      CKAN_SQLALCHEMY_URL: postgresql://keycloak:keycloak@postgres/ckan_test
+      CKAN_DATASTORE_WRITE_URL: postgresql://keycloak:keycloak@postgres/datastore_test
+      CKAN_DATASTORE_READ_URL: postgresql://keycloak:keycloak@postgres/datastore_test
       CKAN_SOLR_URL: http://solr:8983/solr/ckan
       CKAN_REDIS_URL: redis://redis:6379/1
       KEYCLOAK_URL: http://keycloak:8080
@@ -49,6 +48,12 @@ jobs:
         pip install -r requirements.txt
         pip install -r dev-requirements.txt
         pip install -e .
+    - name: Wait for PostgreSQL
+      run: |
+        until PGPASSWORD=keycloak psql -h postgres -U keycloak -d keycloak -c '\q'; do
+          >&2 echo "PostgreSQL is unavailable - sleeping"
+          sleep 1
+        done
     - name: Wait for Keycloak
       run: |
         timeout 300 bash -c 'while [[ "$(curl -s -o /dev/null -w ''%{http_code}'' keycloak:8080/auth/realms/master)" != "200" ]]; do sleep 5; done' || false
