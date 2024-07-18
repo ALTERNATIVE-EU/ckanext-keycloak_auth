@@ -7,7 +7,7 @@ jobs:
       image: openknowledge/ckan-dev:2.9
     services:
       solr:
-        image: ckan/ckan-solr-dev:2.9
+        image: ckan/ckan-solr:2.9-solr8
       postgres:
         image: ckan/ckan-postgres-dev:2.9
         env:
@@ -18,12 +18,11 @@ jobs:
       redis:
         image: redis:3
       keycloak:
-        image: jboss/keycloak:16.1.1
+        image: bitnami/keycloak:21
         env:
-          KEYCLOAK_USER: admin
-          KEYCLOAK_PASSWORD: password
-          DB_VENDOR: h2
-        options: --health-cmd "curl -f http://localhost:8080/auth || exit 1" --health-interval 10s --health-timeout 5s --health-retries 5
+          KEYCLOAK_ADMIN: admin
+          KEYCLOAK_DATABASE_VENDOR: dev-file
+        options: --health-cmd "curl -f http://localhost:8080/realms/master" --health-interval 30s --health-timeout 10s --health-retries 5
         ports:
           - 8080:8080
     env:
@@ -32,7 +31,7 @@ jobs:
       CKAN_DATASTORE_READ_URL: postgresql://datastore_read:pass@postgres/datastore_test
       CKAN_SOLR_URL: http://solr:8983/solr/ckan
       CKAN_REDIS_URL: redis://redis:6379/1
-      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_URL: http://keycloak:8080/
 
     steps:
     - uses: actions/checkout@v2
@@ -49,10 +48,10 @@ jobs:
       run: |
         curl -L -o realm.json https://raw.githubusercontent.com/ALTERNATIVE-EU/platform-deployment/master/deployment/charts/keycloak/realms/alternative-realm.json
         sed -i 's|url/|http://keycloak:8080/|g' realm.json
-        curl -L https://github.com/keycloak/keycloak/releases/download/16.1.1/keycloak-16.1.1.zip -o keycloak.zip
-        unzip keycloak.zip
-        ./keycloak-16.1.1/bin/kcadm.sh config credentials --server http://keycloak:8080/auth --realm master --user admin --password password
-        ./keycloak-16.1.1/bin/kcadm.sh create realms -f realm.json
+        curl -L https://github.com/keycloak/keycloak/releases/download/21.1.2/keycloak-21.1.2.tar.gz -o keycloak.tar.gz
+        tar -xzf keycloak.tar.gz
+        ./keycloak-21.1.2/bin/kcadm.sh config credentials --server http://keycloak:8080/ --realm master --user admin --password bitnami
+        ./keycloak-21.1.2/bin/kcadm.sh create realms -f realm.json
     - name: Setup extension
       run: |
         ckan -c test.ini db init
