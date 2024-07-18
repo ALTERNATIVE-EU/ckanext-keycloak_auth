@@ -23,6 +23,7 @@ jobs:
           KEYCLOAK_USER: admin
           KEYCLOAK_PASSWORD: password
           KEYCLOAK_DATABASE_VENDOR: dev-file
+        options: --health-cmd 'curl -f http://localhost:8080/auth/realms/master' --health-interval 10s --health-timeout 5s --health-retries 5
         ports:
           - 8080:8080
     env:
@@ -44,21 +45,14 @@ jobs:
       run: |
         apk update
         apk add openjdk11-jdk
-    - name: Wait for Keycloak
-      run: |
-        echo "Waiting for Keycloak to be ready..."
-        until curl -sSf http://keycloak:8080/auth/realms/master/protocol/openid-connect/token; do
-          echo "Keycloak is not ready yet. Waiting..."
-          sleep 10
-        done
     - name: Download and import Keycloak realm
       run: |
         curl -L -o realm.json https://raw.githubusercontent.com/ALTERNATIVE-EU/platform-deployment/master/deployment/charts/keycloak/realms/alternative-realm.json
         sed -i 's|url/|http://keycloak:8080/|g' realm.json
         curl -L https://github.com/keycloak/keycloak/releases/download/16.1.1/keycloak-16.1.1.zip -o keycloak.zip
         unzip keycloak.zip
-        keycloak-16.1.1/bin/kcadm.sh config credentials --server http://keycloak:8080/auth --realm master --user admin --password password
-        keycloak-16.1.1/bin/kcadm.sh create realms -f realm.json
+        ./keycloak-16.1.1/bin/kcadm.sh config credentials --server http://keycloak:8080/auth --realm master --user admin --password password
+        ./keycloak-16.1.1/bin/kcadm.sh create realms -f realm.json
     - name: Setup extension
       run: |
         ckan -c test.ini db init
