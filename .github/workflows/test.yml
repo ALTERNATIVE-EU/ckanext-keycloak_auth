@@ -23,7 +23,7 @@ jobs:
           KEYCLOAK_USER: admin
           KEYCLOAK_PASSWORD: password
           KEYCLOAK_DATABASE_VENDOR: dev-file
-        options: --health-cmd "curl -f http://localhost:8080/auth/realms/master" --health-interval 30s --health-timeout 10s --health-retries 5
+        options: --health-cmd "curl -f http://localhost:8080/realms/master" --health-interval 30s --health-timeout 10s --health-retries 5
         ports:
           - 8080:8080
     env:
@@ -32,7 +32,7 @@ jobs:
       CKAN_DATASTORE_READ_URL: postgresql://datastore_read:pass@postgres/datastore_test
       CKAN_SOLR_URL: http://solr:8983/solr/ckan
       CKAN_REDIS_URL: redis://redis:6379/1
-      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_URL: http://keycloak:8080/
 
     steps:
     - uses: actions/checkout@v2
@@ -51,7 +51,7 @@ jobs:
         sed -i 's|url/|http://keycloak:8080/|g' realm.json
         curl -L https://github.com/keycloak/keycloak/releases/download/16.1.1/keycloak-16.1.1.zip -o keycloak.zip
         unzip keycloak.zip
-        ./keycloak-16.1.1/bin/kcadm.sh config credentials --server http://keycloak:8080/auth --realm master --user admin --password password
+        ./keycloak-16.1.1/bin/kcadm.sh config credentials --server http://keycloak:8080/ --realm master --user admin --password password
         ./keycloak-16.1.1/bin/kcadm.sh create realms -f realm.json
     - name: Setup extension
       run: |
