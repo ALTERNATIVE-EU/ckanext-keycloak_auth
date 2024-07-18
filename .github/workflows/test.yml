@@ -22,7 +22,7 @@ jobs:
         env:
           KEYCLOAK_USER: admin
           KEYCLOAK_PASSWORD: password
-          DB_VENDOR: h2
+          KEYCLOAK_DATABASE_VENDOR: h2
         options: --health-cmd "curl -f http://localhost:8080/auth || exit 1" --health-interval 10s --health-timeout 5s --health-retries 5
         ports:
           - 8080:8080
