@@ -126,7 +126,7 @@ class EditView(MethodView):
 
     def get(self, id=None, data=None, errors=None, error_summary=None):
         context, id = self._prepare(id)
-        data_dict = {u'id': id}
+        data_dict = {u'id': id, u'include_plugin_extras': True}
         try:
             old_data = logic.get_action(u'user_show')(context, data_dict)
 

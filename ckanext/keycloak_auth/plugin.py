@@ -1,105 +1,350 @@
 import logging
-from flask import redirect
-from six.moves.urllib.parse import urlparse
+import secrets
+import string
+import urllib.parse
 
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
-
-from .keycloak import KeycloakConnect
+import jwt
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
+import requests
+from ckan import model
+from ckan.common import config, g
+from ckan.lib import base
+from ckanext.keycloak_auth.db.jwt_token import Base, UserSession
+from ckanext.keycloak_auth.keycloak import KeycloakConnect
 from ckanext.keycloak_auth.views.keycloak_auth import keycloak_auth
 from ckanext.keycloak_auth.views.user import user
+from sqlalchemy import engine_from_config
+from flask import request
+
+
+from .keycloak import KeycloakConnect
+
+PUBLIC_KEYS_CACHE = {}
 
 log = logging.getLogger(__name__)
+
+
+def _get_user_by_email(email):
+
+    user_obj = model.User.by_email(email)
+    if user_obj:
+        user_obj = user_obj[0]
+
+    if user_obj and user_obj.is_deleted():
+        user_obj.activate()
+        user_obj.commit()
+        log.info(f"User {user_obj.name} reactivated")
+    return user_obj if user_obj else None
+
+
+def process_user(email, full_name, username, roles):
+    """
+    Check if a user exists for the current login, if not register one
+    Returns the user name
+    """
+    user_dict = _get_user_by_email(email)
+    alphabet = string.ascii_letters + string.digits
+    password = "".join(secrets.choice(alphabet) for i in range(10))
+    if user_dict:
+        log.info(user_dict)
+
+        user_dict.password = password
+        user_dict.fullname = full_name
+        user_dict.email = email
+        user_dict.plugin_extras = {
+            "keycloak_plugin": {
+                "roles_extra": roles,
+            }
+        }
+        user_dict.save()
+        user_dict.commit()
+
+        return user_dict.name
+
+    # This is the first time this user has logged in, register a user
+    user_dict = {
+        "name": username,
+        "fullname": full_name,
+        "email": email,
+        "password": password,
+        "plugin_extras": {
+            "keycloak_plugin": {
+                "roles_extra": roles,
+            }
+        },
+    }
+
+    context = {
+        "ignore_auth": True,
+        "user": username,
+    }
+
+    try:
+        user_dict = toolkit.get_action("user_create")(context, user_dict)
+    except toolkit.ValidationError as e:
+        error_message = e.error_summary or e.message or e.error_dict
+        base.abort(400, error_message)
+
+    return user_dict["name"]
+
 
 class KeycloakAuthPlugin(plugins.SingletonPlugin):
     plugins.implements(plugins.IConfigurable)
     plugins.implements(plugins.IConfigurer)
     plugins.implements(plugins.IBlueprint)
     plugins.implements(plugins.IAuthenticator, inherit=True)
+    plugins.implements(plugins.IActions)
 
+    keycloak_client_server = None
 
-    # IConfigurable
-
-    def configure(self, config):
-        # Certain config options must exists for the plugin to work. Raise an
-        # exception if they're missing.
-        missing_param = "{0} is not configured. Please update your .ini file."
-
-        server_url = config.get('ckanext.keycloak.server_url')
-        if not server_url:
-            raise RuntimeError(missing_param.format('ckanext.keycloak.server_url'))
-
-        realm = config.get('ckanext.keycloak.realm')
-        if not realm:
-            raise RuntimeError(missing_param.format('ckanext.keycloak.realm'))
-
-        client_id = config.get('ckanext.keycloak.client_id')
-        if not client_id:
-            raise RuntimeError(missing_param.format('ckanext.keycloak.client_id'))
-
-        frontend_client_id = config.get('ckanext.keycloak.frontend_client_id')
-        if not frontend_client_id:
-            raise RuntimeError(missing_param.format('ckanext.keycloak.frontend_client_id'))
-
-        admin_group = config.get('ckanext.keycloak.admin_group')
-        if not admin_group:
-            raise RuntimeError(missing_param.format('ckanext.keycloak.admin_group'))
-
-        client_secret_key = config.get('ckanext.keycloak.client_secret_key')
-        if not client_secret_key:
-            raise RuntimeError(missing_param.format('ckanext.keycloak.client_secret_key'))
-
-        ckan_url = config.get('ckanext.keycloak.ckan_url')
-        if not ckan_url:
-            raise RuntimeError(missing_param.format('ckanext.keycloak.ckan_url'))
-
-        # Create Keycloak instance
-        keycloak = KeycloakConnect(server_url=server_url,
-                                    realm_name=realm,
-                                    client_id=client_id,
-                                    client_secret_key=client_secret_key)
-
-        keycloak.userslist()
-
+    # IActions
+    def get_actions(self):
+        return {
+            "get_user_session": get_user_session_action,
+        }
 
     # IConfigurer
+    def configure(self, config):
+        missing_param = "{0} is not configured. Please update your .ini file."
 
+        server_url = config.get("ckanext.keycloak.server_url")
+        if not server_url:
+            raise RuntimeError(missing_param.format("ckanext.keycloak.server_url"))
+
+        realm = config.get("ckanext.keycloak.realm")
+        if not realm:
+            raise RuntimeError(missing_param.format("ckanext.keycloak.realm"))
+
+        client_id = config.get("ckanext.keycloak.client_id")
+        if not client_id:
+            raise RuntimeError(missing_param.format("ckanext.keycloak.client_id"))
+
+        frontend_client_id = config.get("ckanext.keycloak.frontend_client_id")
+        if not frontend_client_id:
+            raise RuntimeError(
+                missing_param.format("ckanext.keycloak.frontend_client_id")
+            )
+
+        admin_group = config.get("ckanext.keycloak.admin_group")
+        if not admin_group:
+            raise RuntimeError(missing_param.format("ckanext.keycloak.admin_group"))
+
+        client_secret_key = config.get("ckanext.keycloak.client_secret_key")
+        if not client_secret_key:
+            raise RuntimeError(
+                missing_param.format("ckanext.keycloak.client_secret_key")
+            )
+
+        ckan_url = config.get("ckanext.keycloak.ckan_url")
+        if not ckan_url:
+            raise RuntimeError(missing_param.format("ckanext.keycloak.ckan_url"))
+
+        self.keycloak_client_server = KeycloakConnect(
+            server_url=server_url,
+            realm_name=realm,
+            client_id=client_id,
+            client_secret_key=client_secret_key,
+        )
+
+        self.keycloak_client_server.userslist()
+
+    # IConfigurer
     def update_config(self, config_):
-        toolkit.add_template_directory(config_, 'templates')
-        toolkit.add_public_directory(config_, 'public')
-        toolkit.add_resource('fanstatic', 'keycloak_auth')
+        toolkit.add_template_directory(config_, "templates")
+        toolkit.add_public_directory(config_, "public")
+        toolkit.add_resource("fanstatic", "keycloak_auth")
 
+        engine = engine_from_config(config_, "sqlalchemy.")
+        Base.metadata.create_all(engine)
 
     # IBlueprint
-
     def get_blueprint(self):
         return [keycloak_auth, user]
 
-
     # IAuthenticator
+    def identify(self):
+        if request.path.startswith("/webassets/") or request.path.startswith("/base/"):
+            return None
 
-    def logout(self):
-        server_url = toolkit.config.get('ckanext.keycloak.server_url')
-        realm = toolkit.config.get('ckanext.keycloak.realm')
-        ckan_url = toolkit.config.get('ckanext.keycloak.ckan_url')
+        session_id = toolkit.request.cookies.get("session_id")
+        if not session_id:
+            return None
 
-        redirect_url = (
-            server_url
-            + "/realms/"
-            + realm
-            + "/protocol/openid-connect"
-            + "/logout?"
-            + "redirect_uri="
-            + ckan_url
+        user_session = get_user_session(session_id)
+        if not user_session:
+            return None
+
+        if user_session and user_session.jwttokens:
+            access_token = user_session.jwttokens.access_token
+            refresh_token = user_session.jwttokens.refresh_token
+
+        if not access_token or not refresh_token:
+            return delete_session(user_session)
+
+        try:
+            access_token_payload = decode_jwt(access_token)
+        except ExpiredSignatureError as e:
+            log.info("Signature expired:" + str(e))
+
+            access_token, refresh_token = self.refresh_auth_tokens(
+                refresh_token, user_session
+            )
+
+            if not access_token or not refresh_token:
+                return delete_session(user_session)
+
+            try:
+                access_token_payload = decode_jwt(access_token)
+            except Exception as e:
+                log.error("Failed to decode JWT token: " + str(e))
+                return delete_session
+        except Exception as e:
+            log.error("Failed to decode JWT token 2: " + str(e))
+            return delete_session
+
+        g.user = process_user(
+            access_token_payload["email"],
+            access_token_payload["name"],
+            access_token_payload["preferred_username"],
+            access_token_payload["realm_access"]["roles"],
         )
 
-        response = redirect(redirect_url, code=302)
-        if response:
-            parsed_url = urlparse(ckan_url)
-            host = parsed_url.netloc.split(':')[0]
+        print(g.user)
+        g.userobj = model.User.by_name(g.user)
+        print(g.userobj)
 
-            response.delete_cookie('auth_tkt', domain='.' + host)
-            response.delete_cookie('auth_tkt')
-            response.delete_cookie('ckan')
+        return None
 
-        return response
+    def refresh_auth_tokens(self, refresh_token, user_session):
+        new_access_token, new_refresh_token = get_jwt_tokens(refresh_token)
+        if new_access_token and new_refresh_token:
+            user_session.jwttokens.access_token = new_access_token
+            user_session.jwttokens.refresh_token = new_refresh_token
+            try:
+                model.Session.add(user_session)
+                model.Session.commit()
+                return new_access_token, new_refresh_token
+            except Exception as e:
+                log.error(f"Refresh auth tokens error: {e}")
+
+                model.Session.delete(user_session)
+                model.Session.commit()
+                return None, None
+
+        return None, None
+
+    def logout(self):
+        server_url = config.get("ckanext.keycloak.server_url")
+        realm = config.get("ckanext.keycloak.realm")
+        ckan_url = toolkit.config.get("ckanext.keycloak.ckan_url")
+
+        keycloak_logout_url = (
+            f"{server_url}/realms/{realm}/protocol/openid-connect/logout"
+        )
+        redirect_uri = f"{ckan_url}"
+
+        params = {"redirect_uri": redirect_uri}
+
+        logout_url = f"{keycloak_logout_url}?{urllib.parse.urlencode(params)}"
+        resp = toolkit.redirect_to(logout_url)
+        resp.delete_cookie("session_id")
+
+        return resp
+
+def get_jwt_tokens(refresh_token):
+    server_url = config.get("ckanext.keycloak.server_url")
+    realm = config.get("ckanext.keycloak.realm")
+
+    token_url = f"{server_url}/realms/{realm}/protocol/openid-connect/token"
+    client_id = config.get("ckanext.keycloak.frontend_client_id")
+
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+    }
+
+    response = requests.post(token_url, data=data, timeout=10)
+
+    if response.status_code == 200:
+        tokens = response.json()
+        new_access_token = tokens["access_token"]
+        new_refresh_token = tokens["refresh_token"]
+
+        return new_access_token, new_refresh_token
+    else:
+        print(
+            f"Failed to refresh access token: {response.status_code} - {response.text}"
+        )
+        return None, None
+
+def fetch_public_key(kid):
+    server_url = config.get("ckanext.keycloak.server_url")
+    realm = config.get("ckanext.keycloak.realm")
+
+    jwks_url = f"{server_url}/realms/{realm}/protocol/openid-connect/certs"
+    try:
+        # Fetch the JWKS
+        jwks_response = requests.get(jwks_url)
+        jwks_response.raise_for_status()
+        jwks = jwks_response.json()
+
+        # Search for the public key by 'kid'
+        for key in jwks.get("keys", []):
+            if key["kid"] == kid:
+                # Cache this key for future validations
+                PUBLIC_KEYS_CACHE[kid] = key
+                return key
+    except requests.RequestException as e:
+        print(f"Error fetching public keys: {e}")
+    return None
+
+def decode_jwt(token):
+    unverified_header = jwt.get_unverified_header(token)
+    kid = unverified_header.get("kid")
+
+    if not kid:
+        raise InvalidTokenError("KID not found in JWT")
+
+    # Attempt to retrieve the public key from cache
+    public_key = PUBLIC_KEYS_CACHE.get(kid)
+
+    # If the key is not in the cache, fetch it
+    if not public_key:
+        public_key = fetch_public_key(kid)
+        if not public_key:
+            raise InvalidTokenError("Public key for KID not found")
+
+    # Construct the RSA public key
+    rsa_public_key = jwt.algorithms.RSAAlgorithm.from_jwk(public_key)
+
+    decoded = jwt.decode(
+        token, rsa_public_key, algorithms=["RS256"], audience="account"
+    )
+    return decoded
+
+def delete_session(user_session):
+    response = toolkit.redirect_to("home.index")
+    response.delete_cookie("session_id")
+
+    model.Session.delete(user_session)
+    model.Session.commit()
+
+    return response
+
+def get_user_session(session_id):
+    try:
+        return (
+            model.Session.query(UserSession)
+            .filter_by(session_id=session_id)
+            .first()
+        )
+    except Exception as e:
+        log.error(f"Get user session error: {e}")
+        return None
+
+def get_user_session_action(context, data_dict):
+    session = get_user_session(data_dict["session_id"])
+    return {"user_session": session}
