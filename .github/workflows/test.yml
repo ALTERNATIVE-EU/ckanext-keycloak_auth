@@ -23,7 +23,7 @@ jobs:
           KEYCLOAK_USER: admin
           KEYCLOAK_PASSWORD: password
           KEYCLOAK_DATABASE_VENDOR: dev-file
-        options: --health-cmd "curl -f http://localhost:8080/auth || exit 1" --health-interval 10s --health-timeout 5s --health-retries 5
+        options: --health-cmd "curl -f http://localhost:8080/auth/realms/master" --health-interval 10s --health-timeout 5s --health-retries 5
         ports:
           - 8080:8080
     env:
