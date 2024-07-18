@@ -13,17 +13,25 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
+          POSTGRES_DB: keycloak
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:3
       keycloak:
-        image: jboss/keycloak:16.1.1
+        image: bitnami/keycloak:16.1.1
         env:
-          KEYCLOAK_USER: admin
-          KEYCLOAK_PASSWORD: password
-          DB_VENDOR: h2
-        options: --health-cmd "curl -f http://localhost:8080/auth || exit 1" --health-interval 10s --health-timeout 5s --health-retries 5
+          KEYCLOAK_ADMIN_USER: admin
+          KEYCLOAK_ADMIN_PASSWORD: password
+          KEYCLOAK_DATABASE_HOST: postgres
+          KEYCLOAK_DATABASE_PORT: 5432
+          KEYCLOAK_DATABASE_NAME: keycloak
+          KEYCLOAK_DATABASE_USER: postgres
+          KEYCLOAK_DATABASE_PASSWORD: postgres
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/auth/realms/master || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
         ports:
           - 8080:8080
     env:
@@ -32,8 +40,7 @@ jobs:
       CKAN_DATASTORE_READ_URL: postgresql://datastore_read:pass@postgres/datastore_test
       CKAN_SOLR_URL: http://solr:8983/solr/ckan
       CKAN_REDIS_URL: redis://redis:6379/1
-      KEYCLOAK_URL: http://keycloak:8080/auth
-
+      KEYCLOAK_URL: http://keycloak:8080
     steps:
     - uses: actions/checkout@v2
     - name: Install requirements
@@ -41,18 +48,12 @@ jobs:
         pip install -r requirements.txt
         pip install -r dev-requirements.txt
         pip install -e .
-    - name: Install Java
-      run: |
-        apk update
-        apk add openjdk11-jdk
     - name: Download and import Keycloak realm
       run: |
         curl -L -o realm.json https://raw.githubusercontent.com/ALTERNATIVE-EU/platform-deployment/master/deployment/charts/keycloak/realms/alternative-realm.json
         sed -i 's|url/|http://keycloak:8080/|g' realm.json
-        curl -L https://github.com/keycloak/keycloak/releases/download/16.1.1/keycloak-16.1.1.zip -o keycloak.zip
-        unzip keycloak.zip
-        ./keycloak-16.1.1/bin/kcadm.sh config credentials --server http://keycloak:8080/auth --realm master --user admin --password password
-        ./keycloak-16.1.1/bin/kcadm.sh create realms -f realm.json
+        docker exec keycloak /opt/bitnami/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password password
+        docker exec keycloak /opt/bitnami/keycloak/bin/kcadm.sh create realms -f /realm.json
     - name: Setup extension
       run: |
         ckan -c test.ini db init
