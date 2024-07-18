@@ -18,7 +18,7 @@ jobs:
       redis:
         image: redis:3
       keycloak:
-        image: jboss/keycloak:16.1.1
+        image: bitnami/keycloak:16.1.1
         env:
           KEYCLOAK_USER: admin
           KEYCLOAK_PASSWORD: password
