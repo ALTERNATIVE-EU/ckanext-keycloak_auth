@@ -36,7 +36,7 @@ def auth():
     model.Session.commit()
     
     resp.set_cookie('session_id', new_session_id, httponly=True, secure=False)
-    
+
     return resp
 
 
