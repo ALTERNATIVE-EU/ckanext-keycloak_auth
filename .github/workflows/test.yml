@@ -20,8 +20,7 @@ jobs:
       keycloak:
         image: bitnami/keycloak:21
         env:
-          KEYCLOAK_USER: admin
-          KEYCLOAK_PASSWORD: password
+          KEYCLOAK_ADMIN: admin
           KEYCLOAK_DATABASE_VENDOR: dev-file
         options: --health-cmd "curl -f http://localhost:8080/realms/master" --health-interval 30s --health-timeout 10s --health-retries 5
         ports:
@@ -49,9 +48,9 @@ jobs:
       run: |
         curl -L -o realm.json https://raw.githubusercontent.com/ALTERNATIVE-EU/platform-deployment/master/deployment/charts/keycloak/realms/alternative-realm.json
         sed -i 's|url/|http://keycloak:8080/|g' realm.json
-        curl -L https://github.com/keycloak/keycloak/releases/download/21.1.2/keycloak-21.1.2.zip -o keycloak.zip
-        unzip keycloak.zip
-        ./keycloak-21.1.2/bin/kcadm.sh config credentials --server http://keycloak:8080/ --realm master --user admin --password password
+        curl -L https://github.com/keycloak/keycloak/releases/download/21.1.2/keycloak-21.1.2.tar.gz -o keycloak.tar.gz
+        tar -xzf keycloak.tar.gz
+        ./keycloak-21.1.2/bin/kcadm.sh config credentials --server http://keycloak:8080/ --realm master --user admin --password bitnami
         ./keycloak-21.1.2/bin/kcadm.sh create realms -f realm.json
     - name: Setup extension
       run: |
