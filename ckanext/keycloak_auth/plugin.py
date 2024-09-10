@@ -17,17 +17,22 @@ from ckanext.keycloak_auth.views.keycloak_auth import keycloak_auth
 from ckanext.keycloak_auth.views.user import user
 from sqlalchemy import engine_from_config
 from flask import request
+from functools import lru_cache
+import aiohttp
+
+
+import asyncio
 
 
 from .keycloak import KeycloakConnect
 
 PUBLIC_KEYS_CACHE = {}
+session_cache = {}
 
 log = logging.getLogger(__name__)
 
 
 def _get_user_by_email(email):
-
     user_obj = model.User.by_email(email)
     if user_obj:
         user_obj = user_obj[0]
@@ -39,6 +44,7 @@ def _get_user_by_email(email):
     return user_obj if user_obj else None
 
 
+
 def process_user(email, full_name, username, roles):
     """
     Check if a user exists for the current login, if not register one
@@ -48,46 +54,26 @@ def process_user(email, full_name, username, roles):
     alphabet = string.ascii_letters + string.digits
     password = "".join(secrets.choice(alphabet) for i in range(10))
     if user_dict:
-        log.info(user_dict)
-
-        user_dict.password = password
-        user_dict.fullname = full_name
-        user_dict.email = email
-        user_dict.plugin_extras = {
-            "keycloak_plugin": {
-                "roles_extra": roles,
+        updated = False
+        if user_dict.fullname != full_name:
+            user_dict.fullname = full_name
+            updated = True
+        if user_dict.email != email:
+            user_dict.email = email
+            updated = True
+        if user_dict.plugin_extras.get("keycloak_plugin", {}).get("roles_extra") != roles:
+            user_dict.plugin_extras = {
+                "keycloak_plugin": {
+                    "roles_extra": roles,
+                }
             }
-        }
-        user_dict.save()
-        user_dict.commit()
+            updated = True
+        if updated:
+            user_dict.password = password
+            user_dict.save()
+            user_dict.commit()
 
         return user_dict.name
-
-    # This is the first time this user has logged in, register a user
-    user_dict = {
-        "name": username,
-        "fullname": full_name,
-        "email": email,
-        "password": password,
-        "plugin_extras": {
-            "keycloak_plugin": {
-                "roles_extra": roles,
-            }
-        },
-    }
-
-    context = {
-        "ignore_auth": True,
-        "user": username,
-    }
-
-    try:
-        user_dict = toolkit.get_action("user_create")(context, user_dict)
-    except toolkit.ValidationError as e:
-        error_message = e.error_summary or e.message or e.error_dict
-        base.abort(400, error_message)
-
-    return user_dict["name"]
 
 
 class KeycloakAuthPlugin(plugins.SingletonPlugin):
@@ -172,9 +158,13 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
         if not session_id:
             return None
 
-        user_session = get_user_session(session_id)
+        # Use cached session if available
+        user_session = session_cache.get(session_id) or get_user_session(session_id)
         if not user_session:
             return None
+
+        # Cache the session
+        session_cache[session_id] = user_session
 
         if user_session and user_session.jwttokens:
             access_token = user_session.jwttokens.access_token
@@ -197,12 +187,12 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
 
             try:
                 access_token_payload = decode_jwt(access_token)
-            except Exception as e:
+            except InvalidTokenError as e:
                 log.error("Failed to decode JWT token: " + str(e))
-                return delete_session
-        except Exception as e:
-            log.error("Failed to decode JWT token 2: " + str(e))
-            return delete_session
+                return delete_session(user_session)
+        except InvalidTokenError as e:
+            log.error("Failed to decode JWT token: " + str(e))
+            return delete_session(user_session)
 
         g.user = process_user(
             access_token_payload["email"],
@@ -211,9 +201,7 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
             access_token_payload["realm_access"]["roles"],
         )
 
-        print(g.user)
         g.userobj = model.User.by_name(g.user)
-        print(g.userobj)
 
         return None
 
@@ -280,25 +268,26 @@ def get_jwt_tokens(refresh_token):
         )
         return None, None
 
-def fetch_public_key(kid):
+async def fetch_public_key(kid):
     server_url = config.get("ckanext.keycloak.server_url")
     realm = config.get("ckanext.keycloak.realm")
 
     jwks_url = f"{server_url}/realms/{realm}/protocol/openid-connect/certs"
-    try:
-        # Fetch the JWKS
-        jwks_response = requests.get(jwks_url)
-        jwks_response.raise_for_status()
-        jwks = jwks_response.json()
+    async with aiohttp.ClientSession() as session:
+        try:
+            # Fetch the JWKS
+            async with session.get(jwks_url) as response:
+                response.raise_for_status()
+                jwks = await response.json()
 
-        # Search for the public key by 'kid'
-        for key in jwks.get("keys", []):
-            if key["kid"] == kid:
-                # Cache this key for future validations
-                PUBLIC_KEYS_CACHE[kid] = key
-                return key
-    except requests.RequestException as e:
-        print(f"Error fetching public keys: {e}")
+                # Search for the public key by 'kid'
+                for key in jwks.get("keys", []):
+                    if key["kid"] == kid:
+                        # Cache this key for future validations
+                        PUBLIC_KEYS_CACHE[kid] = key
+                        return key
+        except aiohttp.ClientError as e:
+            log.error(f"Error fetching public keys: {e}")
     return None
 
 def decode_jwt(token):
@@ -311,9 +300,9 @@ def decode_jwt(token):
     # Attempt to retrieve the public key from cache
     public_key = PUBLIC_KEYS_CACHE.get(kid)
 
-    # If the key is not in the cache, fetch it
+    # If the key is not in the cache, fetch it asynchronously
     if not public_key:
-        public_key = fetch_public_key(kid)
+        public_key = asyncio.run(fetch_public_key(kid))
         if not public_key:
             raise InvalidTokenError("Public key for KID not found")
 
@@ -329,11 +318,15 @@ def delete_session(user_session):
     response = toolkit.redirect_to("home.index")
     response.delete_cookie("session_id")
 
+    # Remove from cache
+    session_cache.pop(user_session.session_id, None)
+
     model.Session.delete(user_session)
     model.Session.commit()
 
     return response
 
+@lru_cache(maxsize=100)
 def get_user_session(session_id):
     try:
         return (
