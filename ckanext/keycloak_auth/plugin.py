@@ -19,7 +19,7 @@ from sqlalchemy import engine_from_config
 from flask import request
 from functools import lru_cache
 import aiohttp
-
+from sqlalchemy.orm import joinedload
 
 import asyncio
 
@@ -74,6 +74,32 @@ def process_user(email, full_name, username, roles):
             user_dict.commit()
 
         return user_dict.name
+    
+    # This is the first time this user has logged in, register a user
+    user_dict = {
+        "name": username,
+        "fullname": full_name,
+        "email": email,
+        "password": password,
+        "plugin_extras": {
+            "keycloak_plugin": {
+                "roles_extra": roles,
+            }
+        },
+    }
+
+    context = {
+        "ignore_auth": True,
+        "user": username,
+    }
+
+    try:
+        user_dict = toolkit.get_action("user_create")(context, user_dict)
+    except toolkit.ValidationError as e:
+        error_message = e.error_summary or e.message or e.error_dict
+        base.abort(400, error_message)
+
+    return user_dict["name"]
 
 
 class KeycloakAuthPlugin(plugins.SingletonPlugin):
@@ -165,6 +191,9 @@ class KeycloakAuthPlugin(plugins.SingletonPlugin):
 
         # Cache the session
         session_cache[session_id] = user_session
+        
+        # Reattach the detached instance to the active session
+        user_session = reattach_session(user_session)
 
         if user_session and user_session.jwttokens:
             access_token = user_session.jwttokens.access_token
@@ -314,6 +343,14 @@ def decode_jwt(token):
     )
     return decoded
 
+def reattach_session(user_session):
+    # Reattach the session to the current SQLAlchemy session
+    current_session = model.Session.object_session(user_session)
+    if not current_session:
+        user_session = model.Session.merge(user_session)
+    return user_session
+
+
 def delete_session(user_session):
     response = toolkit.redirect_to("home.index")
     response.delete_cookie("session_id")
@@ -331,6 +368,7 @@ def get_user_session(session_id):
     try:
         return (
             model.Session.query(UserSession)
+            .options(joinedload(UserSession.jwttokens))
             .filter_by(session_id=session_id)
             .first()
         )
