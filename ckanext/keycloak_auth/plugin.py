@@ -331,7 +331,20 @@ def decode_jwt(token):
 
     # If the key is not in the cache, fetch it asynchronously
     if not public_key:
-        public_key = asyncio.run(fetch_public_key(kid))
+        try:
+            # Try to get the current event loop
+            loop = asyncio.get_event_loop()
+        except RuntimeError:  # If there is no event loop in the current thread
+            loop = asyncio.new_event_loop()  # Create a new event loop
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            # If the event loop is already running, schedule the task
+            public_key = asyncio.ensure_future(fetch_public_key(kid))
+        else:
+            # Otherwise, run the event loop
+            public_key = loop.run_until_complete(fetch_public_key(kid))
+
         if not public_key:
             raise InvalidTokenError("Public key for KID not found")
 
