@@ -8,7 +8,7 @@ CKAN extension that enables Keycloak authentication and user management.
 
 2. Start a Keycloak instance in Docker - <a href="https://www.keycloak.org/getting-started/getting-started-docker" target="_blank">Guide</a>
 
-3. In Keycloak, create a realm with the <a href="https://github.com/ALTERNATIVE-EU/platform-deployment/blob/main/deployment/charts/keycloak/realms/alternative-realm.json" target="_blank">alternative realm json file</a>
+3. In Keycloak, create a realm with the <a href="https://github.com/ALTERNATIVE-EU/platform-deployment/blob/master/deployment/charts/keycloak/realms/alternative-realm.json" target="_blank">alternative realm json file</a>
 
 4. Clone the repository in the `src` dir (usually located in `/usr/lib/ckan/default/src`)
     ```
