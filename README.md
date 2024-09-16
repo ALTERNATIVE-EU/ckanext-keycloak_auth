@@ -10,29 +10,31 @@ CKAN extension that enables Keycloak authentication and user management.
 
 3. In Keycloak, create a realm with the <a href="https://github.com/ALTERNATIVE-EU/platform-deployment/blob/master/deployment/charts/keycloak/realms/alternative-realm.json" target="_blank">alternative realm json file</a>
 
-4. Clone the repository in the `src` dir (usually located in `/usr/lib/ckan/default/src`)
+4. From the Keycloak admin console, update the URLs of the `ai-ml-api`, `ckan-backend`, `ckan-frontend` and `jupyterhub` clients
+
+5. Clone the repository in the `src` dir (usually located in `/usr/lib/ckan/default/src`)
     ```
     cd /usr/lib/ckan/default/src
     git clone https://github.com/ALTERNATIVE-EU/ckanext-keycloak_auth.git
     ```
 
-5. Build the extension
+6. Build the extension
     ```
     . /usr/lib/ckan/default/bin/activate
     cd /usr/lib/ckan/default/src/ckanext-keycloak_auth
     sudo python3 setup.py develop
     ```
 
-6. Update the ckan config file (usually `/etc/ckan/default/ckan.ini`)
+7. Update the ckan config file (usually `/etc/ckan/default/ckan.ini`)
     - Add the extension to your list of plugins
     ```
     ckan.plugins = stats text_view recline_view keycloak_auth
     ```
     - Add <a href="https://github.com/ALTERNATIVE-EU/platform-deployment/blob/main/ckan-alternative-theme/keycloak_auth-config" target="_blank">these settings</a>; change the `ckan_url`, `server_url` and `client_secret_key` (generate new client credentials secret for `ckan-backend` client) params; you might need to change the URLs (Root URL, Valid Redirect URIs, Admin URL, Web Origins) of the `ckan-backend` and `ckan-frontend` clients in Keycloak
 
-7. Add users in Keycloak; to make a sysadmin user - add them to the `admins` group
+8. Add users in Keycloak; to make a sysadmin user - add them to the `admins` group
 
-8. Start CKAN
+9. Start CKAN
    ```
    . /usr/lib/ckan/default/bin/activate
    sudo ckan -c /etc/ckan/default/ckan.ini run
