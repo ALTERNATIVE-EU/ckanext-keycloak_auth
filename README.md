@@ -8,22 +8,24 @@ CKAN extension that enables Keycloak authentication and user management.
 
 2. Start a Keycloak instance in Docker - <a href="https://www.keycloak.org/getting-started/getting-started-docker" target="_blank">Guide</a>
 
-3. In Keycloak, create a realm with the <a href="https://github.com/ALTERNATIVE-EU/platform-deployment/blob/main/deployment/charts/keycloak/realms/alternative-realm.json" target="_blank">alternative realm json file</a>
+3. In Keycloak, create a realm with the <a href="https://github.com/ALTERNATIVE-EU/platform-deployment/blob/master/deployment/charts/keycloak/realms/alternative-realm.json" target="_blank">alternative realm json file</a>
 
-4. Clone the repository in the `src` dir (usually located in `/usr/lib/ckan/default/src`)
+4. From the Keycloak admin console, update the URLs of the `ai-ml-api`, `ckan-backend`, `ckan-frontend` and `jupyterhub` clients
+
+5. Clone the repository in the `src` dir (usually located in `/usr/lib/ckan/default/src`)
     ```
     cd /usr/lib/ckan/default/src
     git clone https://github.com/ALTERNATIVE-EU/ckanext-keycloak_auth.git
     ```
 
-5. Build the extension
+6. Build the extension
     ```
     . /usr/lib/ckan/default/bin/activate
     cd /usr/lib/ckan/default/src/ckanext-keycloak_auth
     sudo python3 setup.py develop
     ```
 
-6. Update the CKAN config file (usually located at `/etc/ckan/default/ckan.ini`)
+7. Update the CKAN config file (usually located at `/etc/ckan/default/ckan.ini`)
 
    - Add the `keycloak_auth` extension to the list of CKAN plugins:
     ```ini
@@ -49,7 +51,7 @@ CKAN extension that enables Keycloak authentication and user management.
      - **Web Origins**: Include the CKAN URL to ensure proper CORS handling, such as `http://localhost:5000`.
 
 
-7. Add users in Keycloak
+8. Add users in Keycloak
 
    - Log in to the Keycloak Admin Console.
    - Navigate to the **Users** section and create new users.
@@ -57,7 +59,7 @@ CKAN extension that enables Keycloak authentication and user management.
      1. In the user’s settings, navigate to the **Groups** tab.
      2. Join the user to the `admins` group (this group should be created in Keycloak as part of your realm setup).
 
-8. Start CKAN
+9. Start CKAN
    ```
    . /usr/lib/ckan/default/bin/activate
    sudo ckan -c /etc/ckan/default/ckan.ini run
