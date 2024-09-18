@@ -1,7 +1,7 @@
 # ckanext-keycloak_auth
 
 ## Description
-CKAN extension that enables Keycloak authentication and user management.
+The ckanext-keycloak_auth is a CKAN extension that integrates Keycloak for authentication and user management, leveraging OAuth2 for secure login and user session management.
 
 ## Authentication Flow
 
