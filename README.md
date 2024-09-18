@@ -167,6 +167,35 @@ When a user logs out, the system must invalidate the session both in CKAN and in
 
 ---
 
+### **Grant Type: Authorization Code Flow**
+The **Authorization Code Grant** is used for the login flow. This is the most secure OAuth2 flow for server-side applications, where the application exchanges an **Authorization Code** for an **Access Token** and a **Refresh Token**.
+
+#### **Key Points:**
+- **Authorization Code**: This is a short-lived code that can only be exchanged for tokens when sent via the backend (to protect from exposure).
+- **Access Token**: A JWT that contains user identity and permissions, used to authenticate the user for each request.
+- **Refresh Token**: Used to obtain a new access token without re-authentication, ensuring seamless user experience after token expiration.
+  
+**Why Authorization Code Grant is Used:**
+- **Security**: Tokens are not exposed in the browser.
+- **Server-side Token Management**: CKAN securely manages access and refresh tokens, reducing the risk of token leaks.
+
+---
+
+### **Validation of Access Tokens (JWT Tokens)**
+The **Access Token** issued by Keycloak is a **JWT (JSON Web Token)**, which is validated locally by CKAN without needing to contact Keycloak for every request. The token contains information about the user and the session and is validated using the following checks:
+
+1. **Token Signature Validation**:
+   - The token’s signature is verified using Keycloak's public key, ensuring the token was issued by Keycloak and has not been tampered with. CKAN fetches the public key from Keycloak’s JWKS (JSON Web Key Set) endpoint.
+   
+2. **Expiration Time (exp)**:
+   - The `exp` claim inside the token specifies the expiration time. CKAN checks this field to ensure the token is still valid. If the token has expired, CKAN uses the **Refresh Token** to obtain a new Access Token.
+
+#### **Token Refresh Process**:
+- If the access token is expired but the refresh token is still valid, CKAN sends a **Token Refresh Request** to Keycloak to get a new access token.
+- If both the access token and refresh token are invalid, CKAN will delete the session and the user is redirected to the login page.
+
+---
+
 ### Summary
 
 - **Login**: The user is redirected to Keycloak, authenticates, and returns to CKAN with tokens that are stored in a session. The session is maintained using a `session_id` cookie.
