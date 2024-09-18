@@ -194,6 +194,11 @@ The **Access Token** issued by Keycloak is a **JWT (JSON Web Token)**, which is 
 - If the access token is expired but the refresh token is still valid, CKAN sends a **Token Refresh Request** to Keycloak to get a new access token.
 - If both the access token and refresh token are invalid, CKAN will delete the session and the user is redirected to the login page.
 
+#### Optimizations:
+
+- **Caching Public Keys**: CKAN caches the public keys fetched from Keycloak to reduce the number of requests to Keycloak’s JWKS endpoint.
+- **Asynchronous Public Key Fetching**: CKAN fetches the public keys asynchronously to prevent blocking the main thread.
+
 ---
 
 ### Summary
