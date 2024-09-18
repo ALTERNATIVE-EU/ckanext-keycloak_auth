@@ -15,37 +15,55 @@ The login process consists of a series of steps that take the user from unauthen
 
 #### Step-by-Step Login Flow:
 
-1. **User Requests Login**:
-   - In CKAN the user clicks the "Log in" button at the top of the page.
-   - The user is redirected to the Keycloak login page by the CKAN system.
+1. **User Initiates Login**:
+   - The user clicks the "Login" button at the top of the CKAN page.
 
 2. **Redirection to Keycloak**:
-   - CKAN constructs a URL that points to the Keycloak authorization endpoint.
-   - The URL contains the `client_id` (which identifies CKAN as the client), the `redirect_uri` (the URL Keycloak should redirect the user to after authentication), and other parameters such as `response_type=code` and `scope=openid`.
-   - The user is redirected to this Keycloak URL.
+   - CKAN constructs a URL pointing to the Keycloak authorization endpoint.
+   - The URL includes `client_id`, `redirect_uri`, `response_type=code`, and `scope=openid`.
+   - CKAN redirects the user to this Keycloak URL.
 
 3. **Keycloak Authentication**:
-   - The user is presented with a login form on the Keycloak page.
+   - The user is presented with Keycloak's login form.
    - The user enters their credentials (username and password) and submits the form.
-   - Keycloak authenticates the user based on these credentials.
 
-4. **Authorization Code Received**:
-   - After successful authentication, Keycloak generates an **authorization code**.
-   - The user is redirected back to CKAN at the specified `redirect_uri` (`/authenticate`) with the authorization code included in the query parameters.
+4. **Credential Validation**:
+   - Keycloak internally validates the user's credentials.
 
-5. **Token Exchange**:
-   - CKAN receives the authorization code.
-   - CKAN sends a server-to-server POST request to Keycloak’s token endpoint, exchanging the authorization code for an **access token** and a **refresh token**.
-   - If successful, Keycloak responds with the access and refresh tokens.
+5. **Authorization Code Generation**:
+   - Upon successful authentication, Keycloak generates an authorization code.
+   - Keycloak redirects the user back to CKAN's specified `redirect_uri` with the authorization code.
 
-6. **Session Creation**:
-   - CKAN generates a secure session ID and associates it with the user.
-   - The access token and refresh token are stored in the CKAN database, linked to the session ID.
-   - A session cookie (`session_id`) is set in the user's browser, allowing CKAN to identify the user in subsequent requests.
+6. **Authorization Code Received**:
+   - The user's browser sends a request to CKAN with the authorization code.
 
-7. **User Redirected to CKAN**:
-   - After tokens are stored, the user is redirected to the CKAN interface, now logged in and authenticated.
-   - CKAN sets the `session_id` cookie to maintain the user’s session.
+7. **Token Exchange Request**:
+   - CKAN sends a server-to-server POST request to Keycloak's token endpoint.
+   - CKAN exchanges the authorization code for access and refresh tokens.
+
+8. **Token Response**:
+   - Keycloak responds to CKAN with the access and refresh tokens.
+
+9. **Session ID Generation**:
+   - CKAN generates a secure session ID for the user.
+
+10. **Database Storage**:
+    - CKAN stores the session ID, access token, and refresh token in its database.
+
+11. **Storage Confirmation**:
+    - The database acknowledges successful storage of the session information.
+
+12. **Cache Storage**:
+    - CKAN stores the session information (session ID, access token, refresh token) in the session cache.
+
+13. **Cache Confirmation**:
+    - The session cache acknowledges successful caching of the session information.
+
+14. **Cookie Setting**:
+    - CKAN sets a `session_id` cookie in the user's browser.
+
+15. **Final Redirection**:
+    - The user is redirected to the CKAN interface, now logged in and authenticated.
 
 ---
 
@@ -60,29 +78,51 @@ Once the user is logged in, CKAN needs to verify their identity on each request 
 #### Step-by-Step Identity Verification Flow:
 
 1. **User Sends a Request**:
-   - The user navigates the CKAN site, making various requests (e.g., visiting a dataset page).
-   - CKAN checks the request for the presence of a valid `session_id` cookie.
+   - The user navigates the CKAN site, making a request (e.g., visiting a dataset page).
+   - The request includes the `session_id` cookie.
 
 2. **Session Lookup**:
-   - CKAN retrieves the `session_id` from the user's cookies.
-   - It looks up the session in the database to find the associated access token and refresh token.
+   - CKAN queries the session cache using the `session_id`.
+   - If the session is in the cache:
+     - 2.1. The cache returns the cached session information.
+   - If the session is not in the cache:
+     - 2.2. CKAN queries the database for the session information.
+     - 2.3. The database returns the session with Access Token and Refresh Token.
+     - 2.4. CKAN stores the session information in the cache.
+     - 2.5. The cache acknowledges successful caching.
 
-3. **Access Token Validation**:
-   - CKAN checks if the access token is valid and has not expired.
-   - If the token is valid, CKAN decodes the JWT token to extract user information (such as email, username, and roles).
-   - CKAN then identifies the user based on this information, ensuring that the request is properly authorized.
+3. **Token Header Extraction**:
+   - CKAN extracts the 'kid' (Key ID) from the Access Token header.
 
-4. **Access Token Expiration Handling**:
-   - If the access token has expired, CKAN attempts to use the **refresh token** to obtain a new access token from Keycloak.
-   - CKAN sends a request to Keycloak’s token endpoint with the refresh token.
-   - If successful, Keycloak returns a new access token and refresh token, which are stored in the session, and the user session is updated.
+4. **Public Key Retrieval**:
+   - CKAN queries the Public Key Cache using the 'kid'.
+   - If the public key is in the cache:
+     - 4.1. The cache returns the cached public key.
+   - If the public key is not in the cache:
+     - 4.2. CKAN fetches the JWKS (JSON Web Key Set) from Keycloak.
+     - 4.3. Keycloak returns the JWKS.
+     - 4.4. CKAN extracts the public key for the specific 'kid'.
+     - 4.5. CKAN stores the public key in the cache.
+     - 4.6. The cache acknowledges successful caching of the public key.
 
-5. **Failed Token Validation**:
-   - If CKAN cannot refresh the token or the tokens are invalid, the user is logged out and redirected to the login page.
-
-6. **User Continuation**:
-   - If the token validation succeeds, the user continues to interact with CKAN as the identified, authenticated user.
-
+5. **Access Token Validation**:
+   - CKAN validates the Access Token using the public key.
+   - If the Access Token is valid:
+     - 5.1. CKAN serves the user's request.
+   - If the Access Token has expired:
+     - 5.2. CKAN requests new tokens from Keycloak using the Refresh Token.
+     - 5.3. Keycloak returns new Access and Refresh Tokens.
+     - 5.4. CKAN updates the session in the database with the new tokens.
+     - 5.5. The database acknowledges the update.
+     - 5.6. CKAN updates the cached session information.
+     - 5.7. The cache acknowledges the update.
+     - 5.8. CKAN serves the user's request.
+   - If the Refresh Token is invalid:
+     - 5.9. CKAN deletes the session from the database.
+     - 5.10. The database acknowledges the session deletion.
+     - 5.11. CKAN deletes the cached session.
+     - 5.12. The cache acknowledges the deletion.
+     - 5.13. CKAN redirects the user to the login page.
 ---
 
 ### 3. **Logout Flow**
@@ -96,20 +136,34 @@ When a user logs out, the system must invalidate the session both in CKAN and in
 #### Step-by-Step Logout Flow:
 
 1. **User Initiates Logout**:
-   - The user clicks a "Logout" button in the CKAN interface.
-   - CKAN triggers the logout process.
+   - The user clicks the "Logout" button in the CKAN interface.
 
-2. **Session Deletion in CKAN**:
-   - CKAN deletes the user’s session from its internal session storage, effectively removing the stored access and refresh tokens.
-   - CKAN clears the `session_id` cookie from the user's browser, ensuring no further session identification is possible.
+2. **Database Session Deletion**:
+   - CKAN sends a request to delete the session from the database using the session_id.
 
-3. **Redirection to Keycloak Logout**:
+3. **Database Acknowledgment**:
+   - The database acknowledges the successful deletion of the session.
+
+4. **Cache Session Deletion**:
+   - CKAN delete the cached session from the Session Cache.
+
+5. **Cache Acknowledgment**:
+   - The Session Cache acknowledges the successful deletion of the cached session.
+
+6. **Cookie Deletion**:
+   - CKAN deletes the session_id cookie from the user's browser.
+
+7. **Keycloak Logout Redirection**:
    - CKAN redirects the user to the Keycloak logout endpoint.
-   - This ensures that the user is also logged out of Keycloak, invalidating the session in the identity provider as well.
 
-4. **User Redirected Back to CKAN**:
-   - After logging out from Keycloak, the user is redirected back to CKAN (to a predefined URL, often the homepage).
-   - The user is now fully logged out and must log in again to access protected resources.
+8. **Keycloak Session Invalidation**:
+   - Keycloak invalidates its own session for the user.
+
+9. **User Redirection to CKAN**:
+   - Keycloak redirects the user back to CKAN (typically to the homepage or a logout confirmation page).
+
+10. **Logout Completion**:
+    - The user arrives at CKAN, now fully logged out.
 
 ---
 
