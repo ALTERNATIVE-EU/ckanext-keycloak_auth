@@ -38,7 +38,6 @@ def _get_user_by_email(email):
         log.info(f"User {user_obj.name} reactivated")
     return user_obj if user_obj else None
 
-
 def process_user(email, full_name, username, roles):
     """
     Check if a user exists for the current login, if not register one
@@ -47,17 +46,27 @@ def process_user(email, full_name, username, roles):
     user_dict = _get_user_by_email(email)
     alphabet = string.ascii_letters + string.digits
     password = "".join(secrets.choice(alphabet) for i in range(10))
+    
     if user_dict:
         log.info(user_dict)
 
+        # Initialize plugin_extras if it's None or missing
+        if not user_dict.plugin_extras:
+            user_dict.plugin_extras = {}
+        
+        # Initialize keycloak_plugin if it's not present
+        if 'keycloak_plugin' not in user_dict.plugin_extras:
+            user_dict.plugin_extras['keycloak_plugin'] = {}
+
+        # Set roles_extra
+        user_dict.plugin_extras['keycloak_plugin']['roles_extra'] = roles
+
+        # Update user attributes
         user_dict.password = password
         user_dict.fullname = full_name
         user_dict.email = email
-        user_dict.plugin_extras = {
-            "keycloak_plugin": {
-                "roles_extra": roles,
-            }
-        }
+
+        # Save and commit changes
         user_dict.save()
         user_dict.commit()
 
@@ -88,7 +97,6 @@ def process_user(email, full_name, username, roles):
         base.abort(400, error_message)
 
     return user_dict["name"]
-
 
 class KeycloakAuthPlugin(plugins.SingletonPlugin):
     plugins.implements(plugins.IConfigurable)
