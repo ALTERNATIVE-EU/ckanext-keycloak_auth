@@ -43,37 +43,50 @@ def _get_user_by_email(email):
         log.info(f"User {user_obj.name} reactivated")
     return user_obj if user_obj else None
 
-
-
 def process_user(email, full_name, username, roles):
     """
     Check if a user exists for the current login, if not register one
     Returns the user name
     """
     user_dict = _get_user_by_email(email)
-    alphabet = string.ascii_letters + string.digits
-    password = "".join(secrets.choice(alphabet) for i in range(10))
+
     if user_dict:
-        updated = False
+        log.info(user_dict)
+
+        # Track if any change was made
+        changes_made = False
+
+        # Initialize plugin_extras and keycloak_plugin with defaults if missing
+        if user_dict.plugin_extras is None:
+            user_dict.plugin_extras = {}
+            changes_made = True
+        
+        if 'keycloak_plugin' not in user_dict.plugin_extras:
+            user_dict.plugin_extras['keycloak_plugin'] = {}
+            changes_made = True
+
+        # Check if roles_extra needs to be updated
+        if user_dict.plugin_extras['keycloak_plugin'].get('roles_extra') != roles:
+            user_dict.plugin_extras['keycloak_plugin']['roles_extra'] = roles
+            changes_made = True
+
         if user_dict.fullname != full_name:
             user_dict.fullname = full_name
-            updated = True
+            changes_made = True
+        
         if user_dict.email != email:
             user_dict.email = email
-            updated = True
-        if user_dict.plugin_extras.get("keycloak_plugin", {}).get("roles_extra") != roles:
-            user_dict.plugin_extras = {
-                "keycloak_plugin": {
-                    "roles_extra": roles,
-                }
-            }
-            updated = True
-        if updated:
-            user_dict.password = password
+            changes_made = True
+
+        # Save and commit only if any changes were made
+        if changes_made:
             user_dict.save()
             user_dict.commit()
 
         return user_dict.name
+
+    
+    password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
     
     # This is the first time this user has logged in, register a user
     user_dict = {
@@ -100,7 +113,6 @@ def process_user(email, full_name, username, roles):
         base.abort(400, error_message)
 
     return user_dict["name"]
-
 
 class KeycloakAuthPlugin(plugins.SingletonPlugin):
     plugins.implements(plugins.IConfigurable)
