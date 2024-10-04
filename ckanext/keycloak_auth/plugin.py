@@ -49,33 +49,44 @@ def process_user(email, full_name, username, roles):
     Returns the user name
     """
     user_dict = _get_user_by_email(email)
-    alphabet = string.ascii_letters + string.digits
-    password = "".join(secrets.choice(alphabet) for i in range(10))
-    
+
     if user_dict:
         log.info(user_dict)
 
-        # Initialize plugin_extras if it's None or missing
-        if not user_dict.plugin_extras:
+        # Track if any change was made
+        changes_made = False
+
+        # Initialize plugin_extras and keycloak_plugin with defaults if missing
+        if user_dict.plugin_extras is None:
             user_dict.plugin_extras = {}
+            changes_made = True
         
-        # Initialize keycloak_plugin if it's not present
         if 'keycloak_plugin' not in user_dict.plugin_extras:
             user_dict.plugin_extras['keycloak_plugin'] = {}
+            changes_made = True
 
-        # Set roles_extra
-        user_dict.plugin_extras['keycloak_plugin']['roles_extra'] = roles
+        # Check if roles_extra needs to be updated
+        if user_dict.plugin_extras['keycloak_plugin'].get('roles_extra') != roles:
+            user_dict.plugin_extras['keycloak_plugin']['roles_extra'] = roles
+            changes_made = True
 
-        # Update user attributes
-        user_dict.password = password
-        user_dict.fullname = full_name
-        user_dict.email = email
+        if user_dict.fullname != full_name:
+            user_dict.fullname = full_name
+            changes_made = True
+        
+        if user_dict.email != email:
+            user_dict.email = email
+            changes_made = True
 
-        # Save and commit changes
-        user_dict.save()
-        user_dict.commit()
+        # Save and commit only if any changes were made
+        if changes_made:
+            user_dict.save()
+            user_dict.commit()
 
         return user_dict.name
+
+    
+    password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
     
     # This is the first time this user has logged in, register a user
     user_dict = {
